@@ -20,9 +20,10 @@ class DocumentsGate() {
 
   def checkWaitingTruck(): Unit = {
     println(s"Truck ${queue.front.id} has documents checked")
-    truck = queue.dequeue()
+    truck = queue.dequeue
   }
 
+  def getCheckedTruckEstimatedTime() = truck.weight
 
 
 }

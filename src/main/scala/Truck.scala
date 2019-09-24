@@ -1,3 +1,1 @@
-class Truck(val id: Int, val weight: Int) {
-
-}
+case class Truck(id: Int, weight: Int)
