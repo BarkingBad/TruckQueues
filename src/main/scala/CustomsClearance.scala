@@ -1,57 +1,34 @@
-import scala.collection.mutable
+import DocumentsGate.{CheckDocuments, DepartureTruckToCargoGate}
+import akka.actor.{Actor, ActorLogging, ActorRef, Props}
 
 object CustomsClearance {
+  def props(documentsGate: ActorRef, cargoGate: ActorRef): Props = Props(new CustomsClearance(documentsGate, cargoGate))
+  case object Step
+}
 
-  val documentsGateQueue = new DocumentsGate
-  val leftCargoGate = new CargoGate
-  val rightCargoGate = new CargoGate
+class CustomsClearance(documentsGate: ActorRef, cargoGate: ActorRef) extends Actor with ActorLogging {
 
-  private var currentTime = 0
+  import CustomsClearance._
+  import CargoGate._
 
-  def step(): Unit = {
+  def receive: Receive = mailbox(0)
+
+  def mailbox(time: Int): Receive = {
+    case Step => {
+      step(time)
+      context.become(mailbox(time + 1))
+    }
+  }
+
+  def step(currentTime: Int): Unit = {
     println(s"Current time is $currentTime")
 
-    if(leftCargoGate.isTruckBeingSearched) {
-      leftCargoGate.progressSearching
-    }
+    cargoGate ! ProgressSearchingLeft
+    cargoGate ! ProgressSearchingRight
 
-    if(rightCargoGate.isTruckBeingSearched) {
-      rightCargoGate.progressSearching
-    }
+    documentsGate ! DepartureTruckToCargoGate
 
-    if(documentsGateQueue.isTruckChecked) {
-      if(leftCargoGate.canAppendTruck && !leftCargoGate.isTruckBeingSearched) {
-        leftCargoGate.appendTruck(documentsGateQueue.getCheckedTruck())
-      }
-      else if (rightCargoGate.canAppendTruck && !rightCargoGate.isTruckBeingSearched) {
-        rightCargoGate.appendTruck(documentsGateQueue.getCheckedTruck)
-      }
-      else {
-        if(leftCargoGate.averageWaitingTime < documentsGateQueue.getCheckedTruckEstimatedTime) {
-          leftCargoGate.appendTruck(documentsGateQueue.getCheckedTruck)
-        }
-        else {
-          rightCargoGate.appendTruck(documentsGateQueue.getCheckedTruck)
-          if(rightCargoGate.isSwapProfitable(leftCargoGate)) {
-            rightCargoGate.swapTrucksAndMessage(leftCargoGate)
-          }
-        }
-      }
-    }
+    documentsGate ! CheckDocuments
 
-    if(documentsGateQueue.areTrucksWaiting && !documentsGateQueue.isTruckChecked) {
-      documentsGateQueue.checkWaitingTruck
-    }
-
-    currentTime += 1
   }
-
-  def main(args: Array[String]): Unit = {
-    documentsGateQueue.addAll(args.toList.zipWithIndex.map{ case (elem, index) => new Truck(index, elem.toInt) })
-
-    while(documentsGateQueue.areTrucksWaiting || leftCargoGate.areTrucksWaiting || rightCargoGate.areTrucksWaiting) {
-      step()
-    }
-  }
-
 }
