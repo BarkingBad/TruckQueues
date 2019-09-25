@@ -14,14 +14,15 @@ object MainActivity {
 
     documentsGate ! Arrive(Truck(1, 4))
     documentsGate ! Arrive(Truck(2, 6))
-    documentsGate ! Arrive(Truck(3, 5))
+    documentsGate ! Arrive(Truck(3, 7))
     documentsGate ! Arrive(Truck(4, 2))
-    documentsGate ! Arrive(Truck(5, 11))
+    documentsGate ! Arrive(Truck(5, 2))
     documentsGate ! Arrive(Truck(6, 4))
     documentsGate ! Arrive(Truck(7, 8))
 
     for(i <- 1 to 100) {
       customsClearance ! Step
+      Thread.sleep(100)
     }
   }
 

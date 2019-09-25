@@ -23,12 +23,13 @@ class CustomsClearance(documentsGate: ActorRef, cargoGate: ActorRef) extends Act
   def step(currentTime: Int): Unit = {
     println(s"Current time is $currentTime")
 
-    cargoGate ! ProgressSearchingLeft
-    cargoGate ! ProgressSearchingRight
-
     documentsGate ! DepartureTruckToCargoGate
 
     documentsGate ! CheckDocuments
 
+    cargoGate ! ProgressSearchingLeft
+    cargoGate ! ProgressSearchingRight
+
+    cargoGate ! TryToSwap(1)
   }
 }

@@ -7,6 +7,7 @@ object CargoGate {
   case object ProgressSearchingLeft
   case object ProgressSearchingRight
   final case class AppendTheTruck(truck: Truck)
+  final case class TryToSwap(index: Int)
 }
 
 class CargoGate extends Actor with ActorLogging {
@@ -43,43 +44,57 @@ class CargoGate extends Actor with ActorLogging {
     }
 
     case AppendTheTruck(truck: Truck) => {
-      if(canAppendToQueue(trucks1)) context.become(mailbox(trucks1 :+ truck, timeSpent1, trucks2, timeSpent2))
-      else if(canAppendToQueue(trucks2)) context.become(mailbox(trucks1, timeSpent1, trucks2 :+ truck, timeSpent2))
+      if(trucks1.isEmpty && trucks2.isEmpty) {
+        context.become(mailbox(trucks1 :+ truck, timeSpent1, trucks2, timeSpent2))
+      } else if(trucks1.size == 1 && trucks2.isEmpty) {
+        if(trucks1.front.weight - timeSpent1 > truck.weight) {
+          context.become(mailbox(trucks1, timeSpent1, trucks2 :+ truck, timeSpent2))
+        } else {
+          context.become(mailbox(trucks2 :+ truck, timeSpent1, trucks1, timeSpent2))
+        }
+      } else if(canAppendToQueue(trucks1) && truck.weight >= averageWaitingTime(trucks1, timeSpent1, trucks2, timeSpent2)) {
+        context.become(mailbox(trucks1 :+ truck, timeSpent1, trucks2, timeSpent2))
+      } else {
+        context.become(mailbox(trucks1, timeSpent1, trucks2 :+ truck, timeSpent2))
+      }
     }
 
+    case TryToSwap(index: Int) => {
+      if(index < 5) {
+        if(isSwapProfitable(index, trucks1, timeSpent1, trucks2, timeSpent2)) {
+          println(s"Swapping truck ${trucks1(index).id} that weighs ${trucks1(index).weight} with truck ${trucks2(index).id} that weighs ${trucks2(index).weight} at position $index")
+          val queuesTuple = swapTrucks(index, trucks1, trucks2)
+          context.become(mailbox(queuesTuple._1, timeSpent1, queuesTuple._2, timeSpent2))
+        } else {
+          context.become(mailbox(trucks1, timeSpent1, trucks2, timeSpent2))
+        }
+        self ! TryToSwap(index + 1)
+      }
+    }
   }
 
-//  def isSwapProfitable(id: Int, other: CargoGate): Boolean = {
-//    if(id > this.queue.size - 1 || other.queue.size < id) return false
-//    val previousState = (averageWaitingTime + other.averageWaitingTime)/2
-//    val queuesTuple = swapTrucks(id, this.queue, other.queue)
-//    val currentState = (averageWaitingTimeById(queuesTuple._1.size, queuesTuple._1) + other.averageWaitingTimeById(queuesTuple._2.size, queuesTuple._2))/2
-//    previousState > currentState
-//  }
-//
-//  def swapTrucksAndMessage(other: CargoGate): Unit = {
-//    val id = this.queue.size - 1
-//    println(s"Swapping truck ${this.queue(id).id} that weighs ${this.queue(id).weight} with truck ${other.queue(id).id} that weighs ${other.queue(id).weight} at position $id")
-//    swapTrucks(id, this.queue, other.queue)
-//  }
-//
-//  private def swapTrucks(id: Int, that: Queue[Truck], other: Queue[Truck]): (Queue[Truck], Queue[Truck]) = {
-//    val thatValue = that(id)
-//    val otherVaule = other(id)
-//    (that.updated(id, otherVaule), other.updated(id, thatValue))
-//  }
+  def isSwapProfitable(id: Int, queue1: Queue[Truck], timeSpent1: Int, queue2: Queue[Truck], timeSpent2: Int): Boolean = {
+    if(id >= queue1.size || id >= queue2.size) return false
+    val previousState = averageWaitingTime(queue1, timeSpent1, queue2, timeSpent2)
+    val queuesTuple = swapTrucks(id, queue1, queue2)
+    val currentState = averageWaitingTime(queuesTuple._1, timeSpent1, queuesTuple._2, timeSpent2)
+    previousState > currentState
+  }
+
+  private def swapTrucks(id: Int, that: Queue[Truck], other: Queue[Truck]): (Queue[Truck], Queue[Truck]) = {
+    val thatValue = that(id)
+    val otherVaule = other(id)
+    (that.updated(id, otherVaule), other.updated(id, thatValue))
+  }
 
   def canAppendToQueue(queue: Queue[Truck]): Boolean = queue.size < 5
-
-
-
-
 
   def averageWaitingTime(trucks1: Queue[Truck], timeSpent1: Int, trucks2: Queue[Truck], timeSpent2: Int): Double = {
     (averageWaitingTimeForOneQueue(trucks1, timeSpent1) + averageWaitingTimeForOneQueue(trucks2, timeSpent2))/2
   }
 
   def averageWaitingTimeForOneQueue(queue: Queue[Truck], timeSpent: Int): Double = {
+    if(queue.isEmpty) return 0
     val weights = queue.toList.map(_.weight)
     val updatedWeights = weights.updated(0, weights.head - timeSpent)
     val res = updatedWeights.reverse.zipWithIndex.reduce((acc, truck) => (acc._1 + truck._1 * (truck._2 + 1), 0))
