@@ -8,6 +8,7 @@ object CargoGate {
   case object ProgressSearchingRight
   final case class AppendTheTruck(truck: Truck)
   final case class TryToSwap(index: Int)
+  case object StateLog
 }
 
 class CargoGate extends Actor with ActorLogging {
@@ -50,7 +51,7 @@ class CargoGate extends Actor with ActorLogging {
         if(trucks1.front.weight - timeSpent1 > truck.weight) {
           context.become(mailbox(trucks1, timeSpent1, trucks2 :+ truck, timeSpent2))
         } else {
-          context.become(mailbox(trucks2 :+ truck, timeSpent1, trucks1, timeSpent2))
+          context.become(mailbox(trucks2 :+ truck, timeSpent2, trucks1, timeSpent1))
         }
       } else if(canAppendToQueue(trucks1) && truck.weight >= averageWaitingTime(trucks1, timeSpent1, trucks2, timeSpent2)) {
         context.become(mailbox(trucks1 :+ truck, timeSpent1, trucks2, timeSpent2))
@@ -62,7 +63,6 @@ class CargoGate extends Actor with ActorLogging {
     case TryToSwap(index: Int) => {
       if(index < 5) {
         if(isSwapProfitable(index, trucks1, timeSpent1, trucks2, timeSpent2)) {
-          println(s"Swapping truck ${trucks1(index).id} that weighs ${trucks1(index).weight} with truck ${trucks2(index).id} that weighs ${trucks2(index).weight} at position $index")
           val queuesTuple = swapTrucks(index, trucks1, trucks2)
           context.become(mailbox(queuesTuple._1, timeSpent1, queuesTuple._2, timeSpent2))
         } else {
@@ -70,6 +70,16 @@ class CargoGate extends Actor with ActorLogging {
         }
         self ! TryToSwap(index + 1)
       }
+    }
+
+    case StateLog => {
+      val outputString = new StringBuilder("Cargo Gate\n")
+      if(trucks1.nonEmpty) outputString ++= s"Left queue progress $timeSpent1/${trucks1.front.weight}\n"
+      outputString ++= "Left cargo queue: "  + trucks1.toString() + "\n"
+      if(trucks2.nonEmpty) outputString ++= s"Right queue progress $timeSpent2/${trucks2.front.weight}\n"
+      outputString ++= "Right cargo queue: " + trucks2.toString() + "\n"
+
+      println(outputString)
     }
   }
 
@@ -102,9 +112,7 @@ class CargoGate extends Actor with ActorLogging {
   }
 
   def isSearchingFinished(timeSpent: Int, queue: Queue[Truck]): Boolean = {
-    println(s"Truck ${queue.front.id} searching progress $timeSpent/${queue.front.weight}")
     if (timeSpent == queue.front.weight) {
-      println(s"Truck ${queue.front.id} has been successfully searched and departures!")
       return true
     }
     return false

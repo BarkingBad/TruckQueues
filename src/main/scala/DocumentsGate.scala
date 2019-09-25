@@ -7,6 +7,7 @@ object DocumentsGate {
   final case class Arrive(truck: Truck)
   case object CheckDocuments
   case object DepartureTruckToCargoGate
+  case object StateLog
 }
 
 
@@ -20,18 +21,27 @@ class DocumentsGate(cargoGate: ActorRef) extends Actor with ActorLogging {
     case Arrive(arrivingTruck: Truck) => {
       context.become(mailbox(queue :+ arrivingTruck, null))
     }
+
     case CheckDocuments => {
       if(queue.size == 0) {
         mailbox(queue, truck)
       } else {
-        println(s"Truck ${queue.front.id} has documents checked")
         val truckTuple = queue.dequeue
         context.become(mailbox(truckTuple._2, truckTuple._1))
       }
     }
+
     case DepartureTruckToCargoGate => {
       if(truck != null) cargoGate ! AppendTheTruck(truck)
       context.become(mailbox(queue, null))
+    }
+
+    case DocumentsGate.StateLog => {
+      val outputString = new StringBuilder("Documents Gate\n")
+      if(truck != null) outputString ++= s"Current truck being checked $truck\nDocuments queue: "
+      outputString ++= queue.toString() + "\n"
+
+      println(outputString)
     }
   }
 }

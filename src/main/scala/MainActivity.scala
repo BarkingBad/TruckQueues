@@ -20,9 +20,11 @@ object MainActivity {
     documentsGate ! Arrive(Truck(6, 4))
     documentsGate ! Arrive(Truck(7, 8))
 
-    for(i <- 1 to 100) {
+    for(i <- 1 to 30) {
       customsClearance ! Step
+      customsClearance ! CustomsClearance.StateLog
       Thread.sleep(100)
+
     }
   }
 

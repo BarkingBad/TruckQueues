@@ -4,6 +4,7 @@ import akka.actor.{Actor, ActorLogging, ActorRef, Props}
 object CustomsClearance {
   def props(documentsGate: ActorRef, cargoGate: ActorRef): Props = Props(new CustomsClearance(documentsGate, cargoGate))
   case object Step
+  case object StateLog
 }
 
 class CustomsClearance(documentsGate: ActorRef, cargoGate: ActorRef) extends Actor with ActorLogging {
@@ -18,11 +19,15 @@ class CustomsClearance(documentsGate: ActorRef, cargoGate: ActorRef) extends Act
       step(time)
       context.become(mailbox(time + 1))
     }
+
+    case CustomsClearance.StateLog => {
+      println(s"Current time is $time\n")
+      cargoGate ! CargoGate.StateLog
+      documentsGate ! DocumentsGate.StateLog
+    }
   }
 
   def step(currentTime: Int): Unit = {
-    println(s"Current time is $currentTime")
-
     documentsGate ! DepartureTruckToCargoGate
 
     documentsGate ! CheckDocuments
