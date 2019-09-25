@@ -1,6 +1,7 @@
 package cli
 
 import akka.actor.{ActorRef, ActorSystem, PoisonPill}
+import system.CustomsClearance.Step
 import system.{CargoGate, CustomsClearance, DocumentsGate, Truck}
 
 object MainActivity {
@@ -14,6 +15,12 @@ object MainActivity {
     val customsClearance: ActorRef = system.actorOf(CustomsClearance.props(documentsGate, cargoGate), "system.CustomsClearance")
 
     var inc = 1
+
+
+    for(i <- 1 to 30) {
+      customsClearance ! CustomsClearance.Arrive(Truck(i, 20))
+    }
+
 
     while(true) {
       val input = scala.io.StdIn.readLine()

@@ -1,11 +1,13 @@
 package system
 
-import akka.actor.{Actor, ActorLogging, Props}
+import akka.actor.{Actor, Props}
+import system.DocumentsGate.DepartureTruckToCargoGate
 
 import scala.collection.immutable.Queue
 
 object CargoGate {
   def props: Props = Props[CargoGate]
+  private[system] case object AskForTruckIfPossible
   private[system] case object AverageWaitingTime
   private[system] case object ProgressSearchingLeft
   private[system] case object ProgressSearchingRight
@@ -14,7 +16,7 @@ object CargoGate {
   private[system] case object StateLog
 }
 
-class CargoGate extends Actor with ActorLogging {
+class CargoGate extends Actor {
 
   import CargoGate._
 
@@ -47,6 +49,13 @@ class CargoGate extends Actor with ActorLogging {
       context.become(mailbox(trucks1, timeSpent1, trucks2, timeSpent2))
     }
 
+    case AskForTruckIfPossible => {
+      if(canAppendToQueue(trucks1) || canAppendToQueue(trucks2)) {
+        sender ! DepartureTruckToCargoGate
+      }
+      context.become(mailbox(trucks1, timeSpent1, trucks2, timeSpent2))
+    }
+
     case AppendTheTruck(truck: Truck) => {
       if(trucks1.isEmpty && trucks2.isEmpty) {
         context.become(mailbox(trucks1 :+ truck, timeSpent1, trucks2, timeSpent2))
@@ -56,10 +65,12 @@ class CargoGate extends Actor with ActorLogging {
         } else {
           context.become(mailbox(trucks2 :+ truck, timeSpent2, trucks1, timeSpent1))
         }
-      } else if(canAppendToQueue(trucks1) && truck.weight >= averageWaitingTime(trucks1, timeSpent1, trucks2, timeSpent2)) {
+      } else if(canAppendToQueue(trucks1) && canAppendToQueue(trucks2) && truck.weight >= averageWaitingTime(trucks1, timeSpent1, trucks2, timeSpent2)) {
         context.become(mailbox(trucks1 :+ truck, timeSpent1, trucks2, timeSpent2))
-      } else {
+      } else if(canAppendToQueue(trucks2)) {
         context.become(mailbox(trucks1, timeSpent1, trucks2 :+ truck, timeSpent2))
+      } else {
+        context.become(mailbox(trucks1 :+ truck, timeSpent1, trucks2, timeSpent2))
       }
     }
 

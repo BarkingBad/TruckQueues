@@ -1,6 +1,6 @@
 package system
 
-import akka.actor.{Actor, ActorLogging, ActorRef, Props}
+import akka.actor.{Actor, ActorRef, Props}
 
 import scala.collection.immutable.Queue
 
@@ -10,10 +10,11 @@ object DocumentsGate {
   private[system] case object CheckDocuments
   private[system] case object DepartureTruckToCargoGate
   private[system] case object StateLog
+  private[system] case object AskIfCanSendTruck
 }
 
 
-class DocumentsGate(cargoGate: ActorRef) extends Actor with ActorLogging {
+class DocumentsGate(cargoGate: ActorRef) extends Actor {
   import CargoGate._
   import DocumentsGate._
 
@@ -25,17 +26,26 @@ class DocumentsGate(cargoGate: ActorRef) extends Actor with ActorLogging {
     }
 
     case CheckDocuments => {
-      if(queue.size == 0) {
-        mailbox(queue, truck)
-      } else {
+      if(queue.nonEmpty && truck == null) {
         val truckTuple = queue.dequeue
         context.become(mailbox(truckTuple._2, truckTuple._1))
+      } else {
+        context.become(mailbox(queue, truck))
       }
     }
 
+    case AskIfCanSendTruck => {
+      cargoGate ! AskForTruckIfPossible
+      context.become(mailbox(queue, truck))
+    }
+
     case DepartureTruckToCargoGate => {
-      if(truck != null) cargoGate ! AppendTheTruck(truck)
+      if(truck != null) {
+        cargoGate ! AppendTheTruck(truck)
+
+      }
       context.become(mailbox(queue, null))
+      self ! CheckDocuments
     }
 
     case DocumentsGate.StateLog => {

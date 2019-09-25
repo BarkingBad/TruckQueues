@@ -1,7 +1,6 @@
 package system
 
-import akka.actor.{Actor, ActorLogging, ActorRef, Props}
-import system.DocumentsGate.{CheckDocuments, DepartureTruckToCargoGate}
+import akka.actor.{Actor, ActorRef, Props}
 
 object CustomsClearance {
   def props(documentsGate: ActorRef, cargoGate: ActorRef): Props = Props(new CustomsClearance(documentsGate, cargoGate))
@@ -11,10 +10,11 @@ object CustomsClearance {
   case object AverageWaitingTime
 }
 
-class CustomsClearance(documentsGate: ActorRef, cargoGate: ActorRef) extends Actor with ActorLogging {
+class CustomsClearance(documentsGate: ActorRef, cargoGate: ActorRef) extends Actor {
 
   import CargoGate._
   import CustomsClearance._
+  import DocumentsGate._
 
   def receive: Receive = mailbox(0)
 
@@ -43,9 +43,7 @@ class CustomsClearance(documentsGate: ActorRef, cargoGate: ActorRef) extends Act
   }
 
   private def step(currentTime: Int): Unit = {
-    documentsGate ! DepartureTruckToCargoGate
-
-    documentsGate ! CheckDocuments
+    documentsGate ! AskIfCanSendTruck
 
     cargoGate ! ProgressSearchingLeft
     cargoGate ! ProgressSearchingRight
