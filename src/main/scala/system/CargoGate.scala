@@ -3,99 +3,108 @@ package system
 import akka.actor.{Actor, Props}
 import system.DocumentsGate.DepartureTruckToCargoGate
 
+import scala.annotation.tailrec
 import scala.collection.immutable.Queue
 
 object CargoGate {
   def props: Props = Props[CargoGate]
-  private[system] case object AskForTruckIfPossible
-  private[system] case object AverageWaitingTime
-  private[system] case object ProgressSearchingLeft
-  private[system] case object ProgressSearchingRight
-  private[system] final case class AppendTheTruck(truck: Truck)
-  private[system] final case class TryToSwap(index: Int)
-  private[system] case object StateLog
+  case object AskForTruckIfPossible
+  case object AverageWaitingTime
+  case object ProgressSearchingLeft
+  case object ProgressSearchingRight
+  final case class AppendTheTruck(truck: Truck)
+  final case class TryToSwap(index: Int)
+  case object StateLog
 }
 
 class CargoGate extends Actor {
 
   import CargoGate._
 
-  def receive: Receive = mailbox(Queue[Truck](), 0, Queue[Truck](), 0)
+  def receive: Receive = mailbox(Queue.empty, 0, Queue.empty, 0)
 
   def mailbox(trucks1: Queue[Truck], timeSpent1: Int, trucks2: Queue[Truck], timeSpent2: Int): Receive = {
+    case ProgressSearchingLeft        => progressSearchingLeftHandler(trucks1, timeSpent1, trucks2, timeSpent2)
+    case ProgressSearchingRight       => progressSearchingRightHandler(trucks1, timeSpent1, trucks2, timeSpent2)
+    case AverageWaitingTime           => averageWaitingTimeHandler(trucks1, timeSpent1, trucks2, timeSpent2)
+    case AskForTruckIfPossible        => askForTruckIfPossibleHandler(trucks1, timeSpent1, trucks2, timeSpent2)
+    case AppendTheTruck(truck: Truck) => appendTheTruckHandler(trucks1, timeSpent1, trucks2, timeSpent2, truck)
+    case TryToSwap                    => tryToSwapHandler(trucks1, timeSpent1, trucks2, timeSpent2, 1)
+    case StateLog                     => stateLogHandler(trucks1, timeSpent1, trucks2, timeSpent2)
+  }
 
-    case ProgressSearchingLeft => {
-      if(trucks1.isEmpty) {
-        context.become(mailbox(trucks1, timeSpent1, trucks2, timeSpent2))
-      } else if(isSearchingFinished(timeSpent1, trucks1)) {
-        context.become(mailbox(trucks1.dequeue._2, 0, trucks2, timeSpent2))
-      } else {
-        context.become(mailbox(trucks1, timeSpent1 + 1, trucks2, timeSpent2))
-      }
-    }
-
-    case ProgressSearchingRight => {
-      if(trucks2.isEmpty) {
-        context.become(mailbox(trucks1, timeSpent1, trucks2, timeSpent2))
-      } else if(isSearchingFinished(timeSpent2, trucks2)) {
-        context.become(mailbox(trucks1, timeSpent1, trucks2.dequeue._2, 0))
-      } else {
-        context.become(mailbox(trucks1, timeSpent1, trucks2, timeSpent2 + 1))
-      }
-    }
-
-    case AverageWaitingTime => {
-      println("" + averageWaitingTime(trucks1, timeSpent1, trucks2, timeSpent2))
+  private def progressSearchingLeftHandler(trucks1: Queue[Truck], timeSpent1: Int, trucks2: Queue[Truck], timeSpent2: Int) = {
+    if(trucks1.isEmpty) {
       context.become(mailbox(trucks1, timeSpent1, trucks2, timeSpent2))
-    }
-
-    case AskForTruckIfPossible => {
-      if(canAppendToQueue(trucks1) || canAppendToQueue(trucks2)) {
-        sender ! DepartureTruckToCargoGate
-      }
-      context.become(mailbox(trucks1, timeSpent1, trucks2, timeSpent2))
-    }
-
-    case AppendTheTruck(truck: Truck) => {
-      if(trucks1.isEmpty && trucks2.isEmpty) {
-        context.become(mailbox(trucks1 :+ truck, timeSpent1, trucks2, timeSpent2))
-      } else if(trucks1.size == 1 && trucks2.isEmpty) {
-        if(trucks1.front.weight - timeSpent1 > truck.weight) {
-          context.become(mailbox(trucks1, timeSpent1, trucks2 :+ truck, timeSpent2))
-        } else {
-          context.become(mailbox(trucks2 :+ truck, timeSpent2, trucks1, timeSpent1))
-        }
-      } else if(canAppendToQueue(trucks1) && canAppendToQueue(trucks2) && truck.weight >= averageWaitingTime(trucks1, timeSpent1, trucks2, timeSpent2)) {
-        context.become(mailbox(trucks1 :+ truck, timeSpent1, trucks2, timeSpent2))
-      } else if(canAppendToQueue(trucks2)) {
-        context.become(mailbox(trucks1, timeSpent1, trucks2 :+ truck, timeSpent2))
-      } else {
-        context.become(mailbox(trucks1 :+ truck, timeSpent1, trucks2, timeSpent2))
-      }
-    }
-
-    case TryToSwap(index: Int) => {
-      if(index < 5) {
-        if(isSwapProfitable(index, trucks1, timeSpent1, trucks2, timeSpent2)) {
-          val queuesTuple = swapTrucks(index, trucks1, trucks2)
-          context.become(mailbox(queuesTuple._1, timeSpent1, queuesTuple._2, timeSpent2))
-        } else {
-          context.become(mailbox(trucks1, timeSpent1, trucks2, timeSpent2))
-        }
-        self ! TryToSwap(index + 1)
-      }
-    }
-
-    case StateLog => {
-      val outputString = new StringBuilder("Cargo Gate\n")
-      if(trucks1.nonEmpty) outputString ++= s"Left queue progress $timeSpent1/${trucks1.front.weight}\n"
-      outputString ++= "Left cargo queue: "  + trucks1.toString() + "\n"
-      if(trucks2.nonEmpty) outputString ++= s"Right queue progress $timeSpent2/${trucks2.front.weight}\n"
-      outputString ++= "Right cargo queue: " + trucks2.toString() + "\n"
-
-      println(outputString)
+    } else if(isSearchingFinished(timeSpent1, trucks1)) {
+      context.become(mailbox(trucks1.tail, 0, trucks2, timeSpent2))
+    } else {
+      context.become(mailbox(trucks1, timeSpent1 + 1, trucks2, timeSpent2))
     }
   }
+
+  private def progressSearchingRightHandler(trucks1: Queue[Truck], timeSpent1: Int, trucks2: Queue[Truck], timeSpent2: Int) = {
+    if(trucks2.isEmpty) {
+      context.become(mailbox(trucks1, timeSpent1, trucks2, timeSpent2))
+    } else if(isSearchingFinished(timeSpent2, trucks2)) {
+      context.become(mailbox(trucks1, timeSpent1, trucks2.tail, 0))
+    } else {
+      context.become(mailbox(trucks1, timeSpent1, trucks2, timeSpent2 + 1))
+    }
+  }
+
+  private def averageWaitingTimeHandler(trucks1: Queue[Truck], timeSpent1: Int, trucks2: Queue[Truck], timeSpent2: Int) = {
+    println("" + averageWaitingTime(trucks1, timeSpent1, trucks2, timeSpent2))
+    context.become(mailbox(trucks1, timeSpent1, trucks2, timeSpent2))
+  }
+
+  private def askForTruckIfPossibleHandler(trucks1: Queue[Truck], timeSpent1: Int, trucks2: Queue[Truck], timeSpent2: Int) = {
+    if(canAppendToQueue(trucks1) || canAppendToQueue(trucks2)) {
+      sender ! DepartureTruckToCargoGate
+    }
+    context.become(mailbox(trucks1, timeSpent1, trucks2, timeSpent2))
+  }
+
+  private def appendTheTruckHandler(trucks1: Queue[Truck], timeSpent1: Int, trucks2: Queue[Truck], timeSpent2: Int, truck: Truck) = {
+    if(trucks1.isEmpty && trucks2.isEmpty) {
+      context.become(mailbox(trucks1 :+ truck, timeSpent1, trucks2, timeSpent2))
+    } else if(trucks1.size == 1 && trucks2.isEmpty) {
+      if(trucks1.front.weight - timeSpent1 > truck.weight) {
+        context.become(mailbox(trucks1, timeSpent1, trucks2 :+ truck, timeSpent2))
+      } else {
+        context.become(mailbox(trucks2 :+ truck, timeSpent2, trucks1, timeSpent1))
+      }
+    } else if(canAppendToQueue(trucks1) && canAppendToQueue(trucks2) && truck.weight >= averageWaitingTime(trucks1, timeSpent1, trucks2, timeSpent2)) {
+      context.become(mailbox(trucks1 :+ truck, timeSpent1, trucks2, timeSpent2))
+    } else if(canAppendToQueue(trucks2)) {
+      context.become(mailbox(trucks1, timeSpent1, trucks2 :+ truck, timeSpent2))
+    } else {
+      context.become(mailbox(trucks1 :+ truck, timeSpent1, trucks2, timeSpent2))
+    }
+  }
+
+  @tailrec private def tryToSwapHandler(trucks1: Queue[Truck], timeSpent1: Int, trucks2: Queue[Truck], timeSpent2: Int, index: Int): Unit = {
+    if(index == 5) {
+      context.become(mailbox(trucks1, timeSpent1, trucks2, timeSpent2))
+    } else {
+      val res = if(isSwapProfitable(index, trucks1, timeSpent1, trucks2, timeSpent2)) {
+        swapTrucks(index, trucks1, trucks2)
+      } else {
+        (trucks1, trucks2)
+      }
+      tryToSwapHandler(res._1, timeSpent1, res._2, timeSpent2, index + 1)
+    }
+  }
+
+  private def stateLogHandler(trucks1: Queue[Truck], timeSpent1: Int, trucks2: Queue[Truck], timeSpent2: Int) = {
+    val string1 = "Cargo Gate\n"
+    val string2 = if(trucks1.nonEmpty) s"Left queue progress $timeSpent1/${trucks1.front.weight}\n" else ""
+    val string3 = "Left cargo queue: "  + trucks1.toString() + "\n"
+    val string4 = if(trucks2.nonEmpty) s"Right queue progress $timeSpent2/${trucks2.front.weight}\n" else ""
+    val string5 = "Right cargo queue: " + trucks2.toString() + "\n"
+    println(string1 + string2 + string3 + string4 + string5)
+  }
+
 
   private def isSwapProfitable(id: Int, queue1: Queue[Truck], timeSpent1: Int, queue2: Queue[Truck], timeSpent2: Int): Boolean = {
     if(id >= queue1.size || id >= queue2.size) return false
@@ -125,10 +134,5 @@ class CargoGate extends Actor {
     res._1.toFloat / queue.length
   }
 
-  private def isSearchingFinished(timeSpent: Int, queue: Queue[Truck]): Boolean = {
-    if (timeSpent == queue.front.weight) {
-      return true
-    }
-    return false
-  }
+  private def isSearchingFinished(timeSpent: Int, queue: Queue[Truck]): Boolean = timeSpent == queue.front.weight
 }

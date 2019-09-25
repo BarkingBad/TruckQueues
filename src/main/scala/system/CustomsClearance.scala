@@ -19,27 +19,32 @@ class CustomsClearance(documentsGate: ActorRef, cargoGate: ActorRef) extends Act
   def receive: Receive = mailbox(0)
 
   def mailbox(time: Int): Receive = {
-    case Step => {
-      step(time)
-      context.become(mailbox(time + 1))
-    }
+    case Step                                  => stepHandler(time)
+    case CustomsClearance.StateLog             => stateLogHandler(time)
+    case CustomsClearance.Arrive(truck: Truck) => arriveHandler(time, truck)
+    case CustomsClearance.AverageWaitingTime   => averageWaitingTimeHandler(time)
+  }
 
-    case CustomsClearance.StateLog => {
-      println(s"Current time is $time\n")
-      cargoGate ! CargoGate.StateLog
-      documentsGate ! DocumentsGate.StateLog
-      context.become(mailbox(time))
-    }
+  private def stepHandler(time: Int) = {
+    step(time)
+    context.become(mailbox(time + 1))
+  }
 
-    case CustomsClearance.Arrive(truck: Truck) => {
-      documentsGate ! DocumentsGate.Arrive(truck)
-      context.become(mailbox(time))
-    }
+  private def stateLogHandler(time: Int) = {
+    println(s"Current time is $time\n")
+    cargoGate ! CargoGate.StateLog
+    documentsGate ! DocumentsGate.StateLog
+    context.become(mailbox(time))
+  }
 
-    case CustomsClearance.AverageWaitingTime => {
-      cargoGate ! CargoGate.AverageWaitingTime
-      context.become(mailbox(time))
-    }
+  private def arriveHandler(time: Int, truck: Truck) = {
+    documentsGate ! DocumentsGate.Arrive(truck)
+    context.become(mailbox(time))
+  }
+
+  private def averageWaitingTimeHandler(time: Int) = {
+    cargoGate ! CargoGate.AverageWaitingTime
+    context.become(mailbox(time))
   }
 
   private def step(currentTime: Int): Unit = {
@@ -48,6 +53,6 @@ class CustomsClearance(documentsGate: ActorRef, cargoGate: ActorRef) extends Act
     cargoGate ! ProgressSearchingLeft
     cargoGate ! ProgressSearchingRight
 
-    cargoGate ! TryToSwap(1)
+    cargoGate ! TryToSwap
   }
 }
