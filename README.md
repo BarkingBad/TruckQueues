@@ -6,7 +6,7 @@ STEP           - advances the state of whole system in a one time interval
 STATUS         - prints the state of whole system in a currnet time interval  
 AVGTIME        - prints average time waiting for trucks between docuemnts' and cargos' gates  
 
-Example Usage
+Example Usage  
 ARRIVE 4  
 ARRIVE 6  
 ARRIVE 7  
